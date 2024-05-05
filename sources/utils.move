@@ -1,8 +1,28 @@
-// sources/utils.move
 module move_castle::utils {
-    use std::hash;
+	use sui::object::{Self, UID};
+    use sui::tx_context::TxContext;
     use std::string::{Self, String};
+    use std::hash;
+    use std::vector;
 
+	/// Generating the castle's serial number.
+    public fun generate_castle_serial_number(size: u64, id: &mut UID): u64 {
+        // hashing on the castle's UID.
+        let mut hash = hash::sha2_256(object::uid_to_bytes(id));
+
+        let mut result_num: u64 = 0;
+        // convert the hash vector to u64.
+        while (vector::length(&hash) > 0) {
+            let element = vector::remove(&mut hash, 0);
+            result_num = ((result_num << 8) | (element as u64));
+        };
+
+        // keep the last 5 digits. 
+        result_num = result_num % 100000u64;
+
+        // concat the size digit.
+        size * 100000u64 + result_num
+    }
 
     public fun serial_number_to_image_id(serial_number: u64): String {
         let id = serial_number / 10 % 10000u64;
@@ -31,27 +51,6 @@ module move_castle::utils {
         string::utf8(result)
     }
 
-
-    /// Generating the castle's serial number.
-    public fun generate_castle_serial_number(size: u64, id: &mut UID): u64 {
-        // hashing on the castle's UID.
-        let mut hash = hash::sha2_256(object::uid_to_bytes(id));
-
-        let mut result_num: u64 = 0;
-        // convert the hash vector to u64.
-        while (vector::length(&hash) > 0) {
-            let element = vector::remove(&mut hash, 0);
-            result_num = ((result_num << 8) | (element as u64));
-        };
-
-        // keep the last 5 digits. 
-        result_num = result_num % 100000u64;
-        
-
-        // concat the size digit.
-        size * 100000u64 + result_num
-    }
-
     public fun random_in_range(range: u64, ctx: &mut TxContext):u64 {
         let uid = object::new(ctx);
         let mut hash = hash::sha2_256(object::uid_to_bytes(&uid));
@@ -65,5 +64,15 @@ module move_castle::utils {
         result_num = result_num % range;
 
         result_num
+    }
+
+    public fun abs_minus(a: u64, b: u64): u64 {
+        let result;
+        if (a > b) {
+            result = a - b;
+        } else {
+            result = b - a;
+        };
+        result
     }
 }

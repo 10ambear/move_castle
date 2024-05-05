@@ -1,14 +1,34 @@
-// castle.move
-
 module move_castle::castle {
+    use std::string::{Self, utf8, String};
 
-    use std::string::{Self, String, utf8};
+	use sui::object::{Self, ID, UID};
+	use sui::transfer;
+	use sui::tx_context::{Self, TxContext};
     use sui::package;
-    use move_castle::utils;
     use sui::display;
     use sui::clock::{Self, Clock};
+    use sui::event;
+
+    use move_castle::utils;
     use move_castle::core::{Self, GameStore};
 
+    /// One-Time-Witness for the module
+    public struct CASTLE has drop {}
+
+    /// The castle struct
+    public struct Castle has key, store{
+    	id: UID,
+        name: String,
+        description: String,
+        serial_number: u64,
+        image_id: String,
+    }
+
+    /// Event - castle built
+    public struct CastleBuilt has copy, drop {
+        id: ID,
+        owner: address,
+    }
 
     fun init(otw: CASTLE, ctx: &mut TxContext) {
         let keys = vector[
@@ -37,37 +57,21 @@ module move_castle::castle {
         transfer::public_transfer(publisher, tx_context::sender(ctx));
         transfer::public_transfer(display, tx_context::sender(ctx));
     }
-    
-    /// The castle struct
-    public struct Castle has key, store{
-        id: UID,
-        name: String,
-        description: String,
-        serial_number: u64,
-        image_id: String,
-    }   
 
-    /// One-Time-Witness for the module, it has to be the first struct in the module, and
-    /// its name should be same as the module name but all uppercase.
-     public struct CASTLE has drop {}
-
-    /// Transfer castle
-    entry fun transfer_castle(castle: Castle, to: address) {
-        transfer::transfer(castle, to);
-    }
-        
     /// Build a castle.
-    entry fun build_castle(size: u64, name_bytes: vector<u8>, desc_bytes: vector<u8>,clock: &Clock, game_store: &mut GameStore, ctx: &mut TxContext) {
+    entry fun build_castle(size: u64, name_bytes: vector<u8>, desc_bytes: vector<u8>, clock: &Clock, game_store: &mut GameStore, ctx: &mut TxContext) {
+        // castle amount check
+	    assert!(core::allow_new_castle(size, game_store), ECastleAmountLimit);
 
-        // castle object UID.
-        let mut obj_id = object::new(ctx);
-        
-        // generate serial number and image id
-        let serial_number = utils::generate_castle_serial_number(size, &mut obj_id);
+		// castle object UID.
+		let mut obj_id = object::new(ctx);
+		
+		// generate serial number.
+		let serial_number = utils::generate_castle_serial_number(size, &mut obj_id);
         let image_id = utils::serial_number_to_image_id(serial_number);
-        
-        // new castle object.
-        let castle = Castle {
+		
+		// new castle object.
+		let castle = Castle {
             id: obj_id,
             name: string::utf8(name_bytes),
             description: string::utf8(desc_bytes),
@@ -87,7 +91,29 @@ module move_castle::castle {
         );
         
         // transfer castle object to the owner.
-        transfer::public_transfer(castle, tx_context::sender(ctx));
+        let owner = tx_context::sender(ctx);
+		transfer::public_transfer(castle, owner);
+        event::emit(CastleBuilt{id: id, owner: owner});
+	}
+
+    /// Transfer castle
+    entry fun transfer_castle(castle: Castle, to: address) {
+        transfer::transfer(castle, to);
+    }
+
+    /// Settle castle's economy
+    entry fun settle_castle_economy(castle: &mut Castle, clock: &Clock, game_store: &mut GameStore) {
+        core::settle_castle_economy(object::id(castle), clock, game_store);
+    }
+
+    /// Castle uses treasury to recruit soldiers
+    entry fun recruit_soldiers (castle: &mut Castle, count: u64, clock: &Clock, game_store: &mut GameStore) {
+        core::recruit_soldiers(object::id(castle), count, clock, game_store);
+    }
+
+    /// Upgrade castle
+    entry fun upgrade_castle(castle: &mut Castle, game_store: &mut GameStore) {
+        core::upgrade_castle(object::id(castle), game_store);
     }
 
     /// Get castle race
@@ -98,4 +124,6 @@ module move_castle::castle {
         };
         race_number
     }
+
+    const ECastleAmountLimit: u64 = 0;
 }

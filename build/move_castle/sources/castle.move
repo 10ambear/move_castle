@@ -1,17 +1,15 @@
-module move_castle::castle {
-    use std::string::{Self, utf8, String};
+module move_castle::castle { // this represents the package and the module <package>::<module>
 
-	use sui::object::{Self, ID, UID};
-	use sui::transfer;
-	use sui::tx_context::{Self, TxContext};
+    use std::string::{Self, utf8, String}; // adds the string module 
     use sui::package;
     use sui::display;
     use sui::clock::{Self, Clock};
     use sui::event;
-
     use move_castle::utils;
     use move_castle::core::{Self, GameStore};
 
+    const ECastleAmountLimit: u64 = 0;
+    
     /// One-Time-Witness for the module
     public struct CASTLE has drop {}
 
@@ -100,12 +98,12 @@ module move_castle::castle {
     entry fun transfer_castle(castle: Castle, to: address) {
         transfer::transfer(castle, to);
     }
-
+    
     /// Settle castle's economy
     entry fun settle_castle_economy(castle: &mut Castle, clock: &Clock, game_store: &mut GameStore) {
         core::settle_castle_economy(object::id(castle), clock, game_store);
     }
-
+    
     /// Castle uses treasury to recruit soldiers
     entry fun recruit_soldiers (castle: &mut Castle, count: u64, clock: &Clock, game_store: &mut GameStore) {
         core::recruit_soldiers(object::id(castle), count, clock, game_store);
@@ -125,5 +123,4 @@ module move_castle::castle {
         race_number
     }
 
-    const ECastleAmountLimit: u64 = 0;
 }

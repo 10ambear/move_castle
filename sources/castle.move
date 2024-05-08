@@ -41,6 +41,7 @@ module move_castle::castle { // this represents the package and the module <pack
     ctx: &mut TxContext -> a mutable reference to the TxContext object. This gives additional info about the transaction (such as the sender address)
     */ 
 
+        // the keys and values are for the display object
         let keys = vector[ // creating a new vector (collection) called keys of strings 
             utf8(b"name"), // utf8 creates a new string from bytes `utf8(bytes: vector<u8>): String`. The b tells the move compiler we're dealing with bytes
             utf8(b"link"), // utf8 creates a new string from bytes `utf8(bytes: vector<u8>): String`. The b tells the move compiler we're dealing with bytes

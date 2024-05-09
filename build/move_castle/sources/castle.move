@@ -8,7 +8,7 @@ module move_castle::castle { // this represents the package and the module <pack
     use move_castle::utils; // adds our utils module from the move_castle package
     use move_castle::core::{Self, GameStore}; // adds the core module and GameStore struct from the move_castle package
 
-    const ECastleAmountLimit: u64 = 0; // this is used for error handlings
+    const ECastleAmountLimit: u64 = 0; // this is used for error handling name:code that represents castle amount limit
     
     /// One-Time-Witness for the module
     public struct CASTLE has drop {} // this is a struct that only has the drop ability for the OTW design pattern

@@ -103,34 +103,44 @@ module move_castle::utils { // this represents the package and the module <packa
     }
     
     /// convert u64 to string, if length < fixed length, prepend "0"
-    public fun u64_to_string(mut n: u64, fixed_length: u64): String {
-        let mut result: vector<u8> = vector::empty<u8>();
-        if (n == 0) {
-            vector::push_back(&mut result, 48);
+    public fun u64_to_string(mut n: u64, fixed_length: u64): String { // takes a mutable uint + uint to represent length
+        let mut result: vector<u8> = vector::empty<u8>(); // instantiate an emprty vector array
+        if (n == 0) { // if n is zero 
+            vector::push_back(&mut result, 48); // push the ascii value of 0 to the end of the vector
         } else {
-            while (n > 0) {
-                let digit = ((n % 10) as u8) + 48;
-                vector::push_back(&mut result, digit);
-                n = n / 10;
+            while (n > 0) { // if n is more than 0 loop through the numner (we start at the last digit)
+                let digit = ((n % 10) as u8) + 48; // this converts a single digit number into ASCII
+                /*
+                Here's a breakdown of what each part does:
+
+                - n % 10: This operation finds the remainder of n divided by 10. 
+                This effectively isolates the last digit of n. For example, if n is 123, n % 10 would be 3.
+
+                - as u8: This part casts the result of n % 10 to an unsigned 8-bit integer (u8). 
+                This is necessary because the ASCII values of digits are represented as u8 in the Move language.
+
+                - + 48: This adds 48 to the result of the previous step. 
+                The ASCII value of the digit '0' is 48, so adding 48 to the ASCII value of a digit converts it 
+                into its ASCII representation. For example, the ASCII value of '0' is 48, '1' is 49, '2' is 50, and so on.
+
+                - let digit = ...: This assigns the result of the operations to a variable named digit. 
+                The variable digit now holds the ASCII representation of the last digit of n.
+                
+                */
+
+
+                vector::push_back(&mut result, digit); // add the digit to the last position of the result vector
+                n = n / 10; // this removes the last digit from the number so 123 / 10 = 12 (truncate)
             };
 
             // add "0" at the string front util fixed length.
-            while (vector::length(&result) < fixed_length) {
-                vector::push_back(&mut result, 48);
+            while (vector::length(&result) < fixed_length) { // if the result vector is smaller than the fixed length add zeros 
+                vector::push_back(&mut result, 48); // add the zero to the end 123 -> 123000
             };
 
-            vector::reverse<u8>(&mut result);
+            vector::reverse<u8>(&mut result); // reverse the order of the elements 123000 -> 000321
         };
-        string::utf8(result)
+        string::utf8(result) // creates a string from a sequence of bytes
     }
-
-
-
-
-
-
-
-
-
 
 }

@@ -253,11 +253,11 @@ module move_castle::core { // this represents the package and the module <packag
     }
 
     /// Settle castle's economy, inner method
-    public fun settle_castle_economy_inner(clock: &Clock, castle_data: &mut CastleData) {
-        let current_timestamp = clock::timestamp_ms(clock);
+    public fun settle_castle_economy_inner(clock: &Clock, castle_data: &mut CastleData) { // quite an important function that updates the castle economy state it takes a clock object and a mutable reference to the CastleData
+        let current_timestamp = clock::timestamp_ms(clock); // gets the current transaction time
 
         // 1. calculate base power benefits
-        let base_benefits = calculate_economic_benefits(castle_data.economy.settle_time, current_timestamp, castle_data.economy.base_power);
+        let base_benefits = calculate_economic_benefits(castle_data.economy.settle_time, current_timestamp, castle_data.economy.base_power); // 
         castle_data.economy.treasury = castle_data.economy.treasury + base_benefits;
         castle_data.economy.settle_time = current_timestamp;
 
@@ -426,7 +426,7 @@ module move_castle::core { // this represents the package and the module <packag
     }
 
     /// Calculate economic benefits based on power and time period (1 minute).
-    fun calculate_economic_benefits(start: u64, end: u64, power: u64): u64 {
+    fun calculate_economic_benefits(start: u64, end: u64, power: u64): u64 { // gets a start time + end time + base castle econ power 
         math::divide_and_round_up((end - start) * power, 60u64 * 1000u64)
     }
 
@@ -434,123 +434,156 @@ module move_castle::core { // this represents the package and the module <packag
         castle_data.millitary.battle_cooldown
     }
 
-    public fun fetch_castle_data(id1: ID, id2: ID, game_store: &mut GameStore): (CastleData, CastleData) {
+    public fun fetch_castle_data(id1: ID, id2: ID, game_store: &mut GameStore): (CastleData, CastleData) { // get the data of two castles by their ids
         let castle_data1 = dynamic_field::remove<ID, CastleData>(&mut game_store.id, id1);
         let castle_data2 = dynamic_field::remove<ID, CastleData>(&mut game_store.id, id2);
         (castle_data1, castle_data2)
     }
 
     /// Get castle soldier limit by castle size
-    fun get_castle_soldier_limit(size: u64) : u64 {
-        let soldier_limit;
-        if (size == CASTLE_SIZE_SMALL) {
-            soldier_limit = MAX_SOLDIERS_SMALL_CASTLE;
-        } else if (size == CASTLE_SIZE_MIDDLE) {
-            soldier_limit = MAX_SOLDIERS_MIDDLE_CASTLE;
-        } else if (size == CASTLE_SIZE_BIG) {
-            soldier_limit = MAX_SOLDIERS_BIG_CASTLE;
+    fun get_castle_soldier_limit(size: u64) : u64 { // gets the soldier limit for a castle size
+        let soldier_limit; // instantiate variable
+        if (size == CASTLE_SIZE_SMALL) { // if the castle is small
+            soldier_limit = MAX_SOLDIERS_SMALL_CASTLE; // set soldier_limit to limit
+        } else if (size == CASTLE_SIZE_MIDDLE) { // if the castle is middle
+            soldier_limit = MAX_SOLDIERS_MIDDLE_CASTLE;  // set soldier_limit to limit
+        } else if (size == CASTLE_SIZE_BIG) { // if the castle is big
+            soldier_limit = MAX_SOLDIERS_BIG_CASTLE;  // set soldier_limit to limit
         } else {
-            abort 0
+            abort 0 // abort if we reach this line
         };
-        soldier_limit
+        soldier_limit // return limit
     }
 
     // Random a target castle id
-    public fun random_battle_target(from_castle: ID, game_store: &GameStore, ctx: &mut TxContext): ID {
-        let total_length = vector::length<ID>(&game_store.castle_ids);
-        assert!(total_length > 1, ENotEnoughCastles);
+    public fun random_battle_target(from_castle: ID, game_store: &GameStore, ctx: &mut TxContext): ID { // this function takes a castle id, GameStore & TxContext and gets a random castle id to fight
+        let total_length = vector::length<ID>(&game_store.castle_ids); // length of the vector that holds all the castle ids in the game store
+        assert!(total_length > 1, ENotEnoughCastles); // if the length is not more than 1, we throw an error because you can't battle yourself
 
-        let mut random_index = utils::random_in_range(total_length, ctx);
-        let mut target = vector::borrow<ID>(&game_store.castle_ids, random_index);
+        let mut random_index = utils::random_in_range(total_length, ctx); // generates a random index in the range of the length 
+        let mut target = vector::borrow<ID>(&game_store.castle_ids, random_index); // gets a castle id from the game store at a random index
 
-        while (object::id_to_address(&from_castle) == object::id_to_address(target)) {
-            // redo random until not equals
-            random_index = utils::random_in_range(total_length, ctx);
-            target = vector::borrow<ID>(&game_store.castle_ids, random_index);
+        while (object::id_to_address(&from_castle) == object::id_to_address(target)) { 
+            /* 
+            this is essentially a way to check that we don't fight ourselves
+            while the ids are the same, redo the random index like we did above 
+
+            it might be strange to consider why they're converting the ids to object addresses, 
+            but remember the ID object does not ensure safety (no duplicates), but addresses do 
+            
+            */
+  
+            random_index = utils::random_in_range(total_length, ctx); // generates a random index in the range of the length 
+            target = vector::borrow<ID>(&game_store.castle_ids, random_index); // gets a castle id from the game store at a random index
         };
 
-        object::id_from_address(object::id_to_address(target))
+        object::id_from_address(object::id_to_address(target)) // @todo I think this might fail if the loop never runs need to check and run this
+        // because we would ve converting from id to id if we don't go into the while loop
     }
 
     /// Castle's single soldier's attack power and defense power
-    public fun get_castle_soldier_attack_defense_power(race: u64): (u64, u64) {
-        let soldier_attack_power;
-        let soldier_defense_power;
-        if (race == CASTLE_RACE_HUMAN) {
-            soldier_attack_power = SOLDIER_ATTACK_POWER_HUMAN;
-            soldier_defense_power = SOLDIER_DEFENSE_POWER_HUMAN;
-        } else if (race == CASTLE_RACE_ELF) {
-            soldier_attack_power = SOLDIER_ATTACK_POWER_ELF;
-            soldier_defense_power = SOLDIER_DEFENSE_POWER_ELF;
-        } else if (race == CASTLE_RACE_ORCS) {
-            soldier_attack_power = SOLDIER_ATTACK_POWER_ORCS;
-            soldier_defense_power = SOLDIER_DEFENSE_POWER_ORCS;
-        } else if (race == CASTLE_RACE_GOBLIN) {
-            soldier_attack_power = SOLDIER_ATTACK_POWER_GOBLIN;
-            soldier_defense_power = SOLDIER_DEFENSE_POWER_GOBLIN;
-        } else if (race == CASTLE_RACE_UNDEAD) {
-            soldier_attack_power = SOLDIER_ATTACK_POWER_UNDEAD;
-            soldier_defense_power = SOLDIER_DEFENSE_POWER_UNDEAD;
+    public fun get_castle_soldier_attack_defense_power(race: u64): (u64, u64) {  // gets the total soldier attack and defense power for a single soldier for a specific race
+        let soldier_attack_power; // instantiate variable to return attack power
+        let soldier_defense_power; // instantiate variable to return defense power
+        if (race == CASTLE_RACE_HUMAN) { // if the race is human
+            soldier_attack_power = SOLDIER_ATTACK_POWER_HUMAN; // set soldier_attack_power variable  to race attack power (single soldier)
+            soldier_defense_power = SOLDIER_DEFENSE_POWER_HUMAN; // set soldier_defense_power variable  to race attack power (single soldier)
+        } else if (race == CASTLE_RACE_ELF) { // if the race is elf
+            soldier_attack_power = SOLDIER_ATTACK_POWER_ELF; // set soldier_attack_power variable  to race attack power (single soldier)
+            soldier_defense_power = SOLDIER_DEFENSE_POWER_ELF; // set soldier_defense_power variable  to race attack power (single soldier)
+        } else if (race == CASTLE_RACE_ORCS) { // if the race is orc
+            soldier_attack_power = SOLDIER_ATTACK_POWER_ORCS; // set soldier_attack_power variable  to race attack power (single soldier)
+            soldier_defense_power = SOLDIER_DEFENSE_POWER_ORCS; // set soldier_defense_power variable  to race attack power (single soldier)
+        } else if (race == CASTLE_RACE_GOBLIN) { // if the race is goblin
+            soldier_attack_power = SOLDIER_ATTACK_POWER_GOBLIN; // set soldier_attack_power variable  to race attack power (single soldier)
+            soldier_defense_power = SOLDIER_DEFENSE_POWER_GOBLIN; // set soldier_defense_power variable  to race attack power (single soldier)
+        } else if (race == CASTLE_RACE_UNDEAD) { // if the race is undead
+            soldier_attack_power = SOLDIER_ATTACK_POWER_UNDEAD; // set soldier_attack_power variable  to race attack power (single soldier)
+            soldier_defense_power = SOLDIER_DEFENSE_POWER_UNDEAD; // set soldier_defense_power variable  to race attack power (single soldier)
         } else {
-            abort 0
+            abort 0 // abort the transaction if we reach this
         };
 
-        (soldier_attack_power, soldier_defense_power)
+        (soldier_attack_power, soldier_defense_power) // return both attack powers (tuple)
     }
 
-        public fun get_castle_race(castle_data: &CastleData): u64 {
+    public fun get_castle_race(castle_data: &CastleData): u64 { // get the castle race by CastleData reference
         castle_data.race
     }
 
     /// Castle's total soldiers attack power
-    public fun get_castle_total_soldiers_attack_power(castle_data: &CastleData): u64 {
-        let (soldier_attack_power, _) = get_castle_soldier_attack_defense_power(castle_data.race);
-        castle_data.millitary.soldiers * soldier_attack_power
+    public fun get_castle_total_soldiers_attack_power(castle_data: &CastleData): u64 { // gets the total soldier attack power for the castle using a CastleData reference
+        let (soldier_attack_power, _) = get_castle_soldier_attack_defense_power(castle_data.race); // gets the soldier (a single soldier) attack power by race
+        castle_data.millitary.soldiers * soldier_attack_power // multiplies the amount of soldiers per racial defense power
     }
 
     /// Castle's total soldiers defense power
-    public fun get_castle_total_soldiers_defense_power(castle_data: &CastleData): u64 {
-        let (_, soldier_defense_power) = get_castle_soldier_attack_defense_power(castle_data.race);
-        castle_data.millitary.soldiers * soldier_defense_power
+    public fun get_castle_total_soldiers_defense_power(castle_data: &CastleData): u64 { // gets the total soldier defense power for the castle using a CastleData reference
+        let (_, soldier_defense_power) = get_castle_soldier_attack_defense_power(castle_data.race); // gets the soldier (a single soldier) defense power by race
+        castle_data.millitary.soldiers * soldier_defense_power // multiplies the amount of soldiers per racial defense power
     }
 
     /// Castle's total attack power (base + soldiers)
-    public fun get_castle_total_attack_power(castle_data: &CastleData): u64 {
-        castle_data.millitary.attack_power + get_castle_total_soldiers_attack_power(castle_data)
+    public fun get_castle_total_attack_power(castle_data: &CastleData): u64 { // gets the total castle attack power using the CastleData reference
+        castle_data.millitary.attack_power + get_castle_total_soldiers_attack_power(castle_data) // returns the castle defense power + soldier defense power
     }
 
     /// Castle's total defense power (base + soldiers)
-    public fun get_castle_total_defense_power(castle_data: &CastleData): u64 {
-        castle_data.millitary.defense_power + get_castle_total_soldiers_defense_power(castle_data)
+    public fun get_castle_total_defense_power(castle_data: &CastleData): u64 { // gets the total castle defense power using the CastleData reference
+        castle_data.millitary.defense_power + get_castle_total_soldiers_defense_power(castle_data) // returns the castle defense power + soldier defense power
     }
     
     // If has race advantage
-    public fun has_race_advantage(castle_data1: &CastleData, castle_data2: &CastleData): bool {
-        let c1_race = castle_data1.race;
-        let c2_race = castle_data2.race;
+    public fun has_race_advantage(castle_data1: &CastleData, castle_data2: &CastleData): bool { // this function checks if either castle has a race advantage, it gets the data from both castles
+        let c1_race = castle_data1.race; // castle 1 race
+        let c2_race = castle_data2.race; // castle 2 race
 
-        let has;
-        if (c1_race == c2_race) {
-            has = false;
-        } else if (c1_race < c2_race) {
-            has = (c2_race - c1_race) == 1;
+        let has; // instantiate a variable that will be used to store a boolean
+        if (c1_race == c2_race) { // if the races are equal no one has an advantage
+            has = false; // sets has to false
+        } else if (c1_race < c2_race) { // if the castle 2 race value is bigger (i.e. higher value)
+            has = (c2_race - c1_race) == 1; // evaluates to true if c2_race - c1_race == 1 and false if not, stores the resulting evaluation in the has
         } else {
-            has = (c1_race - c2_race) == 4;
+            has = (c1_race - c2_race) == 4; // evaluates to true if c1_race - c2_race == 4 and false if not, stores the resulting evaluation in the has
         };
 
-        has
+        /* 
+
+        It works like this
+        human(0) -> elf (1) -> orc(2) -> goblin(3) -> undead(4) -> wraps around to human again
+        Every race os strong to their right and weak to their left
+
+        As an example:
+
+        Undead C1 is 4
+        Human C2 is 0
+
+        1. if (c1_race == c2_race)  -> false
+        2. } else if (c1_race < c2_race) { -> false
+        3. has = (c1_race - c2_race) == 4;
+            4-0 = 4 -> true
+
+        undead has an advantage over human
+        */
+
+        has // returns the has variable
     }
 
-    public fun get_castle_id(castle_data: &CastleData): ID {
-        castle_data.id
+    public fun get_castle_id(castle_data: &CastleData): ID { // returns the castle id from the CastleData object
+        castle_data.id // returns castle id
     }
 
-    public fun get_castle_soldiers(castle_data: &CastleData): u64 {
-        castle_data.millitary.soldiers
+    public fun get_castle_soldiers(castle_data: &CastleData): u64 { // returns the amount of soldiers in the castle from the CastleData object
+        castle_data.millitary.soldiers // returns the amount of soldiers
     }
 
     public fun battle_winner_exp(castle_data: &CastleData): u64 { 
-        *vector::borrow<u64>(&BATTLE_EXP_GAIN_LEVELS, castle_data.level)
+        /*
+        this function takes a reference to CastleData and returns how much battle xp the winning castle gets
+        based on the winner's level. The xp per level is stored in the Constant Vector BATTLE_EXP_GAIN_LEVELS 
+        */
+        *vector::borrow<u64>(&BATTLE_EXP_GAIN_LEVELS, castle_data.level) // borrow gets an immutable reference from the vector at element i (the castle level)
+        // in layman terms it's get an immutable value at index i 
     }
 
     public fun get_castle_economic_base_power(castle_data: &CastleData): u64 { // retuns the base econ base power for the castle using a reference to CastleData

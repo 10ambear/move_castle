@@ -1,6 +1,6 @@
 module move_castle::utils { // this represents the package and the module <package>::<module>
-    use std::string::{Self, String}; // adds the String module, the utf8 function and the String struct
-    use std::hash; // a module that hashes stuff 
+    use std::string::{Self, String}; // adds the String module, the utf8 function and the String struct. We'll be using this to easily `deal` with strings
+    use std::hash; // a module that gives us the power to has stuff
 
 
     /// Generating the castle's serial number.
@@ -8,18 +8,19 @@ module move_castle::utils { // this represents the package and the module <packa
          // This function generates the serial number used by the protocol to create castle attributes 
 
         let mut hash = hash::sha2_256(object::uid_to_bytes(id)); // takes the object id as bytes and hashes it. This hash is a vector<u8>; 
+        // We have to do this conversion because `uid_to_bytes` takes a vector<u8> as a parameter
 
         let mut result_num: u64 = 0; // instantiates a mutable result_num variable
 
-        while (vector::length(&hash) > 0) { // loops through the vector<u8>;
-            let element = vector::remove(&mut hash, 0); // takes an element out of the vector
+        while (vector::length(&hash) > 0) { // loops through the hash vector<u8>;
+            let element = vector::remove(&mut hash, 0); // takes an 'i' element out of the hash, we start with 0 (the first element)
             result_num = ((result_num << 8) | (element as u64));
             /*
             so there are 3 parts to this
 
             result_num << 8:
             this adds bits to the end of a result_num
-            so if resultnum is 10111 it'll be 0000000010111
+            so if result_num is 10111 it'll be 0000000010111
 
             element as u64:
             casts the element as a u64 so that we can use the bitwise OR
@@ -30,21 +31,29 @@ module move_castle::utils { // this represents the package and the module <packa
                  b -> 00001111
             result -> 10111111
 
-
-            The point? To create an integer from a sequence of bytes yay
+            The point? To create an `unique` integer from a sequence of bytes
             */
 
         };
 
         result_num = result_num % 100000u64; // only get the last 5 digits
+        // 12345 % 10 = 1234.5 = 5 
+        // 12345 % 100= 123.45 = 45 
+        // up to 100000 ...  
 
        
         size * 100000u64 + result_num 
-        // essentially adds the size to the result_num since the size was known before
-        // we generated the rest of the serial
+        /* 
+            essentially adds the size to the result_num since the size was known before
+            we generated the rest of the serial 
+            
+            size = 3
+            result num = 12345
+            result = 312345
+        */
     }
 
-    public fun serial_number_to_image_id(serial_number: u64): String { // takes a u64 serial number and returns a string
+    public fun serial_number_to_image_id(serial_number: u64): String { // takes a u64 serial number and returns a string. We use this to generate the images
         let id = serial_number / 10 % 10000u64;
         /* 
             this line works in 2 parts. Let's say the serial is 123456
@@ -58,7 +67,7 @@ module move_castle::utils { // this represents the package and the module <packa
         u64_to_string(id, 4) // cast the id to a string
     }
 
-    public fun abs_minus(a: u64, b: u64): u64 { // takes in 2 uints, returns a uint
+    public fun abs_minus(a: u64, b: u64): u64 { // takes in 2 uints, returns a uint. This function returns the difference between two u64's 
         let result; // instantiate a variable 
         if (a > b) { // if a is bigger 
             result = a - b; // make the result the difference 
@@ -68,7 +77,7 @@ module move_castle::utils { // this represents the package and the module <packa
         result // return the result
     }
 
-    public fun random_in_range(range: u64, ctx: &mut TxContext):u64 { // takes a range as uint and a TxContext
+    public fun random_in_range(range: u64, ctx: &mut TxContext):u64 { // takes a range as uint and a TxContext. This function is very similar to `generate_castle_serial_number` but you can choose the range/size
         let uid = object::new(ctx); // creates a new object and returns the uid 
         let mut hash = hash::sha2_256(object::uid_to_bytes(&uid)); // gets a sha256 hash of the object, this returns a vector<u8>;
         object::delete(uid); // deletes the object via it's uid
@@ -94,10 +103,13 @@ module move_castle::utils { // this represents the package and the module <packa
             result -> 10111111
 
 
-            The point? To create an integer from a sequence of bytes yay
+            The point? To create an `unique` integer from a sequence of bytes
             */
         };
         result_num = result_num % range; // takes the integer we just created and gets a result based on the range
+        // 12345 % 10 = 1234.5 = 5 
+        // 12345 % 100= 123.45 = 45 
+        // and so on ...  
 
         result_num // returns a piece if the integer based on the range
     }

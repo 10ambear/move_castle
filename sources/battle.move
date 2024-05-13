@@ -1,7 +1,7 @@
-module move_castle::battle {
+module move_castle::battle { // this represents the package and the module <package>::<module>
 
     use sui::clock::{Self, Clock}; // adds the clock module and struct for time based functionality
-    use sui::math; // adds the math module 
+    use sui::math; // adds the math functionality  
     use sui::event;  // adds the event module 
     use move_castle::castle::Castle; // adds the castle module
     use move_castle::core::{Self, GameStore}; // adds the GameStore
@@ -28,7 +28,7 @@ module move_castle::battle {
     entry fun battle(castle: &mut Castle, clock: &Clock, game_store: &mut GameStore, ctx: &mut TxContext) {
 
         /*
-        This function simulates a castle battle. It's way too long
+        This function simulates a castle battle.
 
         castle: &mut Castle ->  a mutable reference to the Castle object
         clock: &Clock ->  reference to the Sui clock object
@@ -61,17 +61,17 @@ module move_castle::battle {
         if (core::has_race_advantage(&attacker, &defender)) { // checks if the attacker has an advantage
             attack_power = math::divide_and_round_up(attack_power * 15, 10) // adds 50% to the attack power if there is a race advantage
         } else if (core::has_race_advantage(&defender, &attacker)) { // checks if the defender has an advantage
-            defense_power = math::divide_and_round_up(defense_power * 15, 10) // adds 50% to the attack power if there is a race advantage
+            defense_power = math::divide_and_round_up(defense_power * 15, 10) // adds 50% to the defense power if there is a race advantage
         };
 
         // 4.2 determine win lose
         let (mut winner, mut loser); // creates mutable variables
         if (attack_power > defense_power) { // sets the winner as the attacker (and defender as the loser) of the attackpower > defensepower
-            winner = attacker;
-            loser = defender;
-        } else {
-            winner = defender; // sets the winner as the defender (and attacker as the loser) of the attackpower > defensepower
-            loser = attacker;
+            winner = attacker; // sets the id of the attacker as the winner
+            loser = defender; // sets the id of the defender as the loser
+        } else { // sets the winner as the defender (and attacker as the loser) of the attackpower > defensepower
+            winner = defender; // sets the id of the defender as the winner
+            loser = attacker; // sets the id of the attacker as the loser
         };
         let winner_id = core::get_castle_id(&winner); // gets the castleId of the winner and sets it to winner_id
         let loser_id = core::get_castle_id(&loser); // gets the castleId of the loser and sets it to loser_id
@@ -79,39 +79,36 @@ module move_castle::battle {
         // 5. battle settlement   
         // 5.1 setting winner
         core::settle_castle_economy_inner(clock, &mut winner); // this function settles the castle ecomony of the winner
-        /*
-            I'm not sure the design choices below makes complete sense to me. 
-
-
-            - winner_solders_total_defense_power = amount of soldiers * the defense power of a soldier
-            - same thing for the loser
-
-            Now this part doesn't make sense, why compare the winner's defense power with the loser's attack power, why not the other way around
-            since that's how we determine a winner? It's almost that the attacker attacks with its defenders
-
-            so if the winner defense power is more than the loser's attack power:
-            - gets a single soldier defense power for the winner
-            - calculates the soldiers left by = (total defense power of the winner - total attack power of a loser) / a single winning soldier's defense power
-
-            if this is false "so if the winner defense power is more than the loser's attack power"
-            - the winner has no soldiers left
-
-            weeeeeeeird
-        */
-
 
         let winner_solders_total_defense_power = core::get_castle_total_soldiers_defense_power(&winner); // defense power of the winner
-        let loser_solders_total_attack_power = core::get_castle_total_soldiers_defense_power(&loser); // defense power of the loser
+        let loser_solders_total_attack_power = core::get_castle_total_soldiers_defense_power(&loser); // the naming of this variable is technically incorrect, but this is ok because `core::get_castle_total_soldiers_attack_power` 
+        // actually uses the defense power. It makes reading this a bit tricky though
         let winner_soldiers_left; // creates an empty variable 
-        if (winner_solders_total_defense_power > loser_solders_total_attack_power) { 
-            let (_, winner_soldier_defense_power) = core::get_castle_soldier_attack_defense_power(core::get_castle_race(&winner)); // takes the winner's race and gets how much the defense power is of a single soldier
-            winner_soldiers_left = math::divide_and_round_up(winner_solders_total_defense_power - loser_solders_total_attack_power, winner_soldier_defense_power);
-        } else {
-            winner_soldiers_left = 0;
+        if (winner_solders_total_defense_power > loser_solders_total_attack_power) { // if the winner's defense power > loser attack power
+            let (_, winner_soldier_defense_power) = core::get_castle_soldier_attack_defense_power(core::get_castle_race(&winner)); // takes the winner's race and gets the defense power of a SINGLE soldier
+            // it's important to note that `winner_solders_total_defense_power` (plural) will always be less than `winner_soldier_defense_power` (single) because we're comparing multiple soldiers to one soldier and
+            // we already determined above (with the battle itself) that there are soldiers present
+
+            winner_soldiers_left = math::divide_and_round_up(winner_solders_total_defense_power - loser_solders_total_attack_power, winner_soldier_defense_power); 
+            /*
+                calculated how many soldiers the winner has left
+
+                winner_solders_total_defense_power - loser_solders_total_attack_power = diff
+                diff / winner_soldier_defense_power 
+
+                Example:
+
+                1500 - 500 = 1000 
+                1000 / 100 = 10
+                10 soldiers are left
+            */
+
+        } else { // if the loser's attack power is more than the winner's defense power, the winner will not have soldiers left
+            winner_soldiers_left = 0; // sets winner_soldiers_left to 0 
         };
-        let winner_soldiers_lost = core::get_castle_soldiers(&winner) - winner_soldiers_left;
+        let winner_soldiers_lost = core::get_castle_soldiers(&winner) - winner_soldiers_left; // new variable to determine how many soldiers were lost
         let winner_exp_gain = core::battle_winner_exp(&winner); // get exp for the win
-        let reparation_economic_power = core::get_castle_economic_base_power(&loser); // get the loser's econ power to add a buff to the winner
+        let reparation_economic_power = core::get_castle_economic_base_power(&loser); // get the loser's econ power to add as a buff to the winner
         core::battle_settlement_save_castle_data(
             game_store, // game store state for the dynamic field update
             winner, // winner castle id

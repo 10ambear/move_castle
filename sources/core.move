@@ -331,54 +331,76 @@ module move_castle::core { // this represents the package and the module <packag
 
     /// Settle battle
     public fun battle_settlement_save_castle_data(game_store: &mut GameStore, mut castle_data: CastleData, win: bool, cooldown: u64, economic_base_power: u64, current_timestamp: u64, economy_buff_end: u64, soldiers_left: u64, exp_gain: u64) {
+        // The function is used to update the state of the castle data after a battle
+        
+        /*
+            game_store -> This is used to add castle_data to the game_store via a dynamic field
+            castle_data -> the mutable castle_data object. This is the main focus point of this function, we need to update the castle_data after the battle
+            win -> boolean that describes if the castle won or lost
+            cooldown -> represents the battle cooldown (game design to make sure castles can't keep attacking each other)
+            current_timestamp -> time stamp of the battle (it's going to be used to set the buff/debuff timer)
+            economy_buff_end -> time when the econ buff/debuff will end
+            soldiers_left -> how many soldiers are left after the battle
+            exp_gain -> how much xp (if any) the castle will get
+        */
+
         // 1. battle cooldown
-        castle_data.millitary.battle_cooldown = cooldown;
+        castle_data.millitary.battle_cooldown = cooldown; // set the battle_cooldown
         // 2. soldier left
-        castle_data.millitary.soldiers = soldiers_left;
-        castle_data.economy.soldier_buff.power = calculate_soldiers_economic_power(soldiers_left);
-        castle_data.economy.soldier_buff.start = current_timestamp;
+        castle_data.millitary.soldiers = soldiers_left; // set the soldiers_left
+        castle_data.economy.soldier_buff.power = calculate_soldiers_economic_power(soldiers_left); // calculate the new soldier econ power based on the soldiers left and sets it
+        castle_data.economy.soldier_buff.start = current_timestamp; // sets when the buff/debuff will start
         // 3. soldiers caused total attack/defense power
-        castle_data.millitary.total_attack_power = get_castle_total_attack_power(&castle_data);
-        castle_data.millitary.total_defense_power = get_castle_total_defense_power(&castle_data);
+        castle_data.millitary.total_attack_power = get_castle_total_attack_power(&castle_data); // sets total attack power for the castle
+        castle_data.millitary.total_defense_power = get_castle_total_defense_power(&castle_data); // sets total defense power for the castle
         // 4. exp gain
-        castle_data.experience_pool = castle_data.experience_pool + exp_gain;
+        castle_data.experience_pool = castle_data.experience_pool + exp_gain; // sets the xp gain (could be zero by design for the losing castle)
         // 5. economy buff
-        vector::push_back(&mut castle_data.economy.battle_buff, EconomicBuff {
-            debuff: !win,
-            power: economic_base_power,
-            start: current_timestamp,
-            end: economy_buff_end,
+        vector::push_back(&mut castle_data.economy.battle_buff, EconomicBuff {  // creates a new EconomicBuff object and adds it to the back of the Vector
+            debuff: !win, // This is a logical NOT, if win is true it will set debuff to FALSE, if win is false it will set debuff to TRUE
+            power: economic_base_power, // sets the economic_base_power for the buff/debuff
+            start: current_timestamp, // sets the start of the buff 
+            end: economy_buff_end, // sets the end of the buff
         });
         // 6. put back to table
-        dynamic_field::add(&mut game_store.id, castle_data.id, castle_data);
+        dynamic_field::add(&mut game_store.id, castle_data.id, castle_data); // adds the castle_data to the game_store via dynamic field 
     }
 
 
     /// Consume experience points from the experience pool to upgrade the castle
-    public fun upgrade_castle(id: ID, game_store: &mut GameStore) { // ths function takes a castle id and mutable game store to uprade your castle if you have the xp
+    public fun upgrade_castle(id: ID, game_store: &mut GameStore) { // ths function takes a castle id and mutable game_store to uprade your castle if you have the xp
         // 1. fetch castle data
         let castle_data = dynamic_field::borrow_mut<ID, CastleData>(&mut game_store.id, id); // gets the castle data via a mutable borrow (so we can make changes)
 
         // 2. continually upgrade if exp is enough
         let initial_level = castle_data.level;// set the initial level to the current level
         while (castle_data.level < MAX_CASTLE_LEVEL) { // loop while the castle data level is less than the MAX_CASTLE_LEVEL
-            let exp_required_at_current_level = *vector::borrow(&REQUIRED_EXP_LEVELS, castle_data.level - 1);
-            if(castle_data.experience_pool < exp_required_at_current_level) {
-                break
+            let exp_required_at_current_level = *vector::borrow(&REQUIRED_EXP_LEVELS, castle_data.level - 1); // gets the xp required for the level
+            /*
+                vector::borrow =  borrows an immutable reference from an array at index i
+
+                REQUIRED_EXP_LEVELS -> this is a vector with all the xp required at each level so level1 = 100, level2 = 150 etc etc
+                castle_data.level - 1 -> we do this because an array is zero indexed so to get level1, we need position 0 in the array (i.e. the first element) as an example
+            */
+
+            if(castle_data.experience_pool < exp_required_at_current_level) { // if the castle does not have enough xp to upgrade, break out of the loop
+                break // keyword used to break out of loops
             };
 
-            castle_data.experience_pool = castle_data.experience_pool - exp_required_at_current_level;
-            castle_data.level = castle_data.level + 1;
+            castle_data.experience_pool = castle_data.experience_pool - exp_required_at_current_level; // update the state of the xp as we just used some xp to upgrade
+            castle_data.level = castle_data.level + 1; // levels up the castle
         };
 
-        // 3. update powers if upgraded
-        if (castle_data.level > initial_level) {
-            let base_economic_power = calculate_castle_base_economic_power(freeze(castle_data));
-            castle_data.economy.base_power = base_economic_power;
+        // 3. update powers if upgraded - if the castle was levelled up we need to update it's econ and defense power
+        if (castle_data.level > initial_level) { // if the castle was levelled up 
+            let base_economic_power = calculate_castle_base_economic_power(freeze(castle_data)); // calculate the new base econ power based on the new level
+            // note that we freeze the object because `calculate_castle_base_economic_power` only takes a reference to castle_data (we can't send it a mutable reference)
+            castle_data.economy.base_power = base_economic_power; // set the updated econ power
 
-            let (attack_power, defense_power) = calculate_castle_base_attack_defense_power(freeze(castle_data));
-            castle_data.millitary.attack_power = attack_power;
-            castle_data.millitary.defense_power = defense_power;
+            let (attack_power, defense_power) = calculate_castle_base_attack_defense_power(freeze(castle_data)); // calculate the new base military power based on the new level
+            // note that we freeze the object because `calculate_castle_base_attack_defense_power` only takes a reference to castle_data (we can't send it a mutable reference)
+            castle_data.millitary.attack_power = attack_power; // set the updated attack_power
+            castle_data.millitary.defense_power = defense_power; // set the updated defense_power
         }
     }
 

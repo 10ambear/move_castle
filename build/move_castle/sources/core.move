@@ -257,113 +257,132 @@ module move_castle::core { // this represents the package and the module <packag
         let current_timestamp = clock::timestamp_ms(clock); // gets the current transaction time
 
         // 1. calculate base power benefits
-        let base_benefits = calculate_economic_benefits(castle_data.economy.settle_time, current_timestamp, castle_data.economy.base_power); // 
-        castle_data.economy.treasury = castle_data.economy.treasury + base_benefits;
-        castle_data.economy.settle_time = current_timestamp;
+        let base_benefits = calculate_economic_benefits(castle_data.economy.settle_time, current_timestamp, castle_data.economy.base_power); // calculate the econ benefits from the last settle time until now
+        castle_data.economy.treasury = castle_data.economy.treasury + base_benefits; // adds the new calculated base_benefits to the current treasury
+        castle_data.economy.settle_time = current_timestamp; // update the settle time to now
 
         // 2. calculate soldier buff
-        let soldier_benefits = calculate_economic_benefits(castle_data.economy.soldier_buff.start, current_timestamp, castle_data.economy.soldier_buff.power);
-        castle_data.economy.treasury = castle_data.economy.treasury + soldier_benefits;
-        castle_data.economy.soldier_buff.start = current_timestamp;
+        let soldier_benefits = calculate_economic_benefits(castle_data.economy.soldier_buff.start, current_timestamp, castle_data.economy.soldier_buff.power); // calculate the econ benefits from soldiers from the last settle time until now
+        castle_data.economy.treasury = castle_data.economy.treasury + soldier_benefits; // adds the new calculated soldier_benefits to the current treasury (compounds with the calculation above)
+        castle_data.economy.soldier_buff.start = current_timestamp; // update the soldier buff to now 
 
         // 3. calculate battle buff
-        if (!vector::is_empty(&castle_data.economy.battle_buff)) {
-            let length = vector::length(&castle_data.economy.battle_buff);
-            let mut expired_buffs = vector::empty<u64>();
-            let mut i = 0;
-            while (i < length) {
-                let buff = vector::borrow_mut(&mut castle_data.economy.battle_buff, i);
-                let mut battle_benefit;
-                if (buff.end <= current_timestamp) {
-                    vector::push_back(&mut expired_buffs, i);
-                    battle_benefit = calculate_economic_benefits(buff.start, buff.end, buff.power);
-                } else {
-                    battle_benefit = calculate_economic_benefits(buff.start, current_timestamp, buff.power);
-                    buff.start = current_timestamp;
+        if (!vector::is_empty(&castle_data.economy.battle_buff)) { // if the battle buff is not empty
+            let length = vector::length(&castle_data.economy.battle_buff); // get the length of the battle buff vector (so how many buffs)
+            let mut expired_buffs = vector::empty<u64>(); // instantiate a new empty array 
+            let mut i = 0; // set a counter to zero
+            while (i < length) { // loop while the counter is less than the length (so loop until we reach the length)
+                let buff = vector::borrow_mut(&mut castle_data.economy.battle_buff, i); // gets the a mutable reference to the battle_buff object (which is really just the EconomicBuff object)
+                let mut battle_benefit; // instantiate a new variable
+                if (buff.end <= current_timestamp) { // if the end time of the buff is <= now (we'd have to stop the buff right?)
+                    vector::push_back(&mut expired_buffs, i); // add the buff object to the end of the expired_buffs vector
+                    battle_benefit = calculate_economic_benefits(buff.start, buff.end, buff.power); // calculates the buff benefits from the start to the end of the buff
+                } else { // if the end tme of the buff is > now (we shouldn't stop the buff)
+                    battle_benefit = calculate_economic_benefits(buff.start, current_timestamp, buff.power); // calculates the buff benefits from the start to now
+                    buff.start = current_timestamp; // sets the new start time of the buff to now (we do this so we don't give the castle an additional buff the next time we call the function and the buff expired)
                 };
 
-                if (buff.debuff) {
-                    castle_data.economy.treasury = castle_data.economy.treasury - battle_benefit;
+                if (buff.debuff) { // if the buff is considered a debuff
+                    castle_data.economy.treasury = castle_data.economy.treasury - battle_benefit; // remove the benefit or you could say add the debuff to the castle econ
                 } else {
-                    castle_data.economy.treasury = castle_data.economy.treasury + battle_benefit;
+                    castle_data.economy.treasury = castle_data.economy.treasury + battle_benefit; // add the benefit or add the buff to the castle econ
                 };
-                i = i + 1;
+                i = i + 1; // increment the counter
             };
 
             // remove expired buffs
-            while(!vector::is_empty(&expired_buffs)) {
-                let expired_buff_index = vector::remove(&mut expired_buffs, 0);
-                vector::remove(&mut castle_data.economy.battle_buff, expired_buff_index);
+            while(!vector::is_empty(&expired_buffs)) { // loop if the vector isn't empty
+                let expired_buff_index = vector::remove(&mut expired_buffs, 0); // get the index of the expired buff
+                vector::remove(&mut castle_data.economy.battle_buff, expired_buff_index); // remove the expired buff from the castle_data
             };
-            vector::destroy_empty<u64>(expired_buffs);
+            vector::destroy_empty<u64>(expired_buffs); // destroy the empty array
         }
     } 
     
     /// Castle uses treasury to recruit soldiers
-    public fun recruit_soldiers (id: ID, count: u64, clock: &Clock, game_store: &mut GameStore) {
+    public fun recruit_soldiers (id: ID, count: u64, clock: &Clock, game_store: &mut GameStore) { // this is the function we use to recruit soldiers, we call this with our castle id + the amount of soldiers we want
         // 1. borrow the castle data
-        let castle_data = dynamic_field::borrow_mut<ID, CastleData>(&mut game_store.id, id);
+        let castle_data = dynamic_field::borrow_mut<ID, CastleData>(&mut game_store.id, id); // get the castle_data from a dynamic field
 
         // 2. check count limit
-        let final_soldiers = castle_data.millitary.soldiers + count;
-        assert!(final_soldiers <= get_castle_soldier_limit(castle_data.size), ESoldierCountLimit);
+        let final_soldiers = castle_data.millitary.soldiers + count; // check how many soldiers the castle would have if this succeeds
+        assert!(final_soldiers <= get_castle_soldier_limit(castle_data.size), ESoldierCountLimit); // throw and error if we're over the limit
 
         // 3. check treasury sufficiency
-        let total_soldier_price = SOLDIER_PRICE * count;
-        assert!(castle_data.economy.treasury >= total_soldier_price, EInsufficientTreasury);
+        let total_soldier_price = SOLDIER_PRICE * count; // calculate the price of the soldiers
+        assert!(castle_data.economy.treasury >= total_soldier_price, EInsufficientTreasury); // throws an error if we can't afford them
 
         // 4. settle economy
-        settle_castle_economy_inner(clock, castle_data);
+        settle_castle_economy_inner(clock, castle_data); // important function to update the castle economy before we make state changes
 
         // 5. update treasury and soldiers
-        castle_data.economy.treasury = castle_data.economy.treasury - total_soldier_price;
-        castle_data.millitary.soldiers = final_soldiers;
+        castle_data.economy.treasury = castle_data.economy.treasury - total_soldier_price; // update the balance of our treasury with the price of soldiers
+        castle_data.millitary.soldiers = final_soldiers; // updates the amount of soldiers in the castle
 
         // 6. update soldier economic power buff
-        castle_data.economy.soldier_buff.power = SOLDIER_ECONOMIC_POWER * final_soldiers;
-        castle_data.economy.soldier_buff.start = clock::timestamp_ms(clock);
+        castle_data.economy.soldier_buff.power = SOLDIER_ECONOMIC_POWER * final_soldiers; // updates the econ buff
+        castle_data.economy.soldier_buff.start = clock::timestamp_ms(clock); // update the time to now
     
         // 7. update total attack/defense power
-        castle_data.millitary.total_attack_power = get_castle_total_attack_power(freeze(castle_data));
-        castle_data.millitary.total_defense_power = get_castle_total_defense_power(freeze(castle_data));
+        castle_data.millitary.total_attack_power = get_castle_total_attack_power(freeze(castle_data)); // update the attack power.
+        castle_data.millitary.total_defense_power = get_castle_total_defense_power(freeze(castle_data)); // update the defense  power
+        // we have to freeze the mutable object because the get_castle_total_attack_power only takes an immutable reference 
     }
 
     /// Settle battle
     public fun battle_settlement_save_castle_data(game_store: &mut GameStore, mut castle_data: CastleData, win: bool, cooldown: u64, economic_base_power: u64, current_timestamp: u64, economy_buff_end: u64, soldiers_left: u64, exp_gain: u64) {
+        // The function is used to update the state of the castle data after a battle
+        
+        /*
+            game_store -> This is used to add castle_data to the game_store via a dynamic field
+            castle_data -> the mutable castle_data object. This is the main focus point of this function, we need to update the castle_data after the battle
+            win -> boolean that describes if the castle won or lost
+            cooldown -> represents the battle cooldown (game design to make sure castles can't keep attacking each other)
+            current_timestamp -> time stamp of the battle (it's going to be used to set the buff/debuff timer)
+            economy_buff_end -> time when the econ buff/debuff will end
+            soldiers_left -> how many soldiers are left after the battle
+            exp_gain -> how much xp (if any) the castle will get
+        */
+
         // 1. battle cooldown
-        castle_data.millitary.battle_cooldown = cooldown;
+        castle_data.millitary.battle_cooldown = cooldown; // set the battle_cooldown
         // 2. soldier left
-        castle_data.millitary.soldiers = soldiers_left;
-        castle_data.economy.soldier_buff.power = calculate_soldiers_economic_power(soldiers_left);
-        castle_data.economy.soldier_buff.start = current_timestamp;
+        castle_data.millitary.soldiers = soldiers_left; // set the soldiers_left
+        castle_data.economy.soldier_buff.power = calculate_soldiers_economic_power(soldiers_left); // calculate the new soldier econ power based on the soldiers left and sets it
+        castle_data.economy.soldier_buff.start = current_timestamp; // sets when the buff/debuff will start
         // 3. soldiers caused total attack/defense power
-        castle_data.millitary.total_attack_power = get_castle_total_attack_power(&castle_data);
-        castle_data.millitary.total_defense_power = get_castle_total_defense_power(&castle_data);
+        castle_data.millitary.total_attack_power = get_castle_total_attack_power(&castle_data); // sets total attack power for the castle
+        castle_data.millitary.total_defense_power = get_castle_total_defense_power(&castle_data); // sets total defense power for the castle
         // 4. exp gain
-        castle_data.experience_pool = castle_data.experience_pool + exp_gain;
+        castle_data.experience_pool = castle_data.experience_pool + exp_gain; // sets the xp gain (could be zero by design for the losing castle)
         // 5. economy buff
-        vector::push_back(&mut castle_data.economy.battle_buff, EconomicBuff {
-            debuff: !win,
-            power: economic_base_power,
-            start: current_timestamp,
-            end: economy_buff_end,
+        vector::push_back(&mut castle_data.economy.battle_buff, EconomicBuff {  // creates a new EconomicBuff object and adds it to the back of the Vector
+            debuff: !win, // This is a logical NOT, if win is true it will set debuff to FALSE, if win is false it will set debuff to TRUE
+            power: economic_base_power, // sets the economic_base_power for the buff/debuff
+            start: current_timestamp, // sets the start of the buff 
+            end: economy_buff_end, // sets the end of the buff
         });
         // 6. put back to table
-        dynamic_field::add(&mut game_store.id, castle_data.id, castle_data);
+        dynamic_field::add(&mut game_store.id, castle_data.id, castle_data); // adds the castle_data to the game_store via dynamic field 
     }
 
 
-    // === Public-View Functions ===
-
     /// Consume experience points from the experience pool to upgrade the castle
-    public fun upgrade_castle(id: ID, game_store: &mut GameStore) {
+    public fun upgrade_castle(id: ID, game_store: &mut GameStore) { // ths function takes a castle id and mutable game_store to uprade your castle if you have the xp
         // 1. fetch castle data
-        let castle_data = dynamic_field::borrow_mut<ID, CastleData>(&mut game_store.id, id);
+        let castle_data = dynamic_field::borrow_mut<ID, CastleData>(&mut game_store.id, id); // gets the castle data via a mutable borrow (so we can make changes)
 
         // 2. continually upgrade if exp is enough
-        let initial_level = castle_data.level;
-        while (castle_data.level < MAX_CASTLE_LEVEL) {
+        let initial_level = castle_data.level;// set the initial level to the current level
+        while (castle_data.level < MAX_CASTLE_LEVEL) { // loop while the castle data level is less than the MAX_CASTLE_LEVEL
             let exp_required_at_current_level = *vector::borrow(&REQUIRED_EXP_LEVELS, castle_data.level - 1);
+            /*
+                vector::borrow =  borrows an immutable reference from an array at index i
+
+                REQUIRED_EXP_LEVELS -> this is a vector with all the xp required at each level so level1 = 100, level2 = 150 etc etc
+                castle_data.level - 1 -> we do this because an array is zero indexed
+            */
+
             if(castle_data.experience_pool < exp_required_at_current_level) {
                 break
             };
@@ -383,61 +402,87 @@ module move_castle::core { // this represents the package and the module <packag
         }
     }
 
+    public fun fetch_castle_data(id1: ID, id2: ID, game_store: &mut GameStore): (CastleData, CastleData) { // get the data of two castles by their ids
+        let castle_data1 = dynamic_field::remove<ID, CastleData>(&mut game_store.id, id1); // removes the castle data dymanic field
+        let castle_data2 = dynamic_field::remove<ID, CastleData>(&mut game_store.id, id2);// removes the castle data dymanic field
+        /*
+        this might seem strange at first, but this is used un the battle::battle function which calls the core::battle_settlement_save_castle_data
+        function will will mutate the castle data and add it back as a dynamic field
+        */
 
-    /// Get initial attack power and defense power by race
-    fun get_initial_attack_defense_power(race: u64): (u64, u64) {
-        let (attack, defense);
-
-        if (race == CASTLE_RACE_HUMAN) {
-            (attack, defense) = (INITIAL_ATTCK_POWER_HUMAN, INITIAL_DEFENSE_POWER_HUMAN);
-        } else if (race == CASTLE_RACE_ELF) {
-            (attack, defense) = (INITIAL_ATTCK_POWER_ELF, INITIAL_DEFENSE_POWER_ELF);
-        } else if (race == CASTLE_RACE_ORCS) {
-            (attack, defense) = (INITIAL_ATTCK_POWER_ORCS, INITIAL_DEFENSE_POWER_ORCS);
-        } else if (race == CASTLE_RACE_GOBLIN) {
-            (attack, defense) = (INITIAL_ATTCK_POWER_GOBLIN, INITIAL_DEFENSE_POWER_GOBLIN);
-        } else if (race == CASTLE_RACE_UNDEAD) {
-            (attack, defense) = (INITIAL_ATTCK_POWER_UNDEAD, INITIAL_DEFENSE_POWER_UNDEAD);
-        } else {
-            abort 0
-        };
-
-        (attack, defense)
+        (castle_data1, castle_data2) // returns the castle data
     }
 
-    fun get_initial_soldiers_attack_defense_power(race: u64, soldiers: u64): (u64, u64) {
-        let (attack, defense) = get_castle_soldier_attack_defense_power(race);
-        (attack * soldiers, defense * soldiers)
+
+    /// Get initial attack power and defense power by race
+    fun get_initial_attack_defense_power(race: u64): (u64, u64) { // gets the initial attack and defense power per race
+        let (attack, defense); // instantiates the variables
+
+        if (race == CASTLE_RACE_HUMAN) { // if race is human
+            (attack, defense) = (INITIAL_ATTCK_POWER_HUMAN, INITIAL_DEFENSE_POWER_HUMAN); // sets the variables to the inital constant values
+        } else if (race == CASTLE_RACE_ELF) { // if race is elf
+            (attack, defense) = (INITIAL_ATTCK_POWER_ELF, INITIAL_DEFENSE_POWER_ELF); // sets the variables to the inital constant values
+        } else if (race == CASTLE_RACE_ORCS) { // if race is orcs
+            (attack, defense) = (INITIAL_ATTCK_POWER_ORCS, INITIAL_DEFENSE_POWER_ORCS); // sets the variables to the inital constant values
+        } else if (race == CASTLE_RACE_GOBLIN) { // if race is goblin
+            (attack, defense) = (INITIAL_ATTCK_POWER_GOBLIN, INITIAL_DEFENSE_POWER_GOBLIN); // sets the variables to the inital constant values
+        } else if (race == CASTLE_RACE_UNDEAD) { // if race is undead
+            (attack, defense) = (INITIAL_ATTCK_POWER_UNDEAD, INITIAL_DEFENSE_POWER_UNDEAD); // sets the variables to the inital constant values
+        } else {
+            abort 0 // aborts the transaction if we run this 
+        };
+
+        (attack, defense) // returns the attack and defense values
+    }
+
+    fun get_initial_soldiers_attack_defense_power(race: u64, soldiers: u64): (u64, u64) { // gets the initial attack and defense power by race and total number of soldiers.
+        //  The naming is a bit misleading, but makes sense if you look at how it's used in init_castle_data. The soldiers parameter is a constant that could've been used here
+        let (attack, defense) = get_castle_soldier_attack_defense_power(race); // gets the soldier attack and defense per race (single soldier)
+        (attack * soldiers, defense * soldiers) // takes the attack and defense power per soldier and multiplies it by the amount of soldiers
     }
 
     // Get initial economic power by castle size
-    fun get_initial_economic_power(size: u64): u64 {
-        let power;
-        if (size == CASTLE_SIZE_SMALL) {
-            power = INITIAL_ECONOMIC_POWER_SMALL_CASTLE;
-        } else if (size == CASTLE_SIZE_MIDDLE) {
-            power = INITIAL_ECONOMIC_POWER_MIDDLE_CASTLE;
-        } else if (size == CASTLE_SIZE_BIG) {
-            power = INITIAL_ECONOMIC_POWER_BIG_CASTLE;
+    fun get_initial_economic_power(size: u64): u64 { // gets the initial econ power per castle size
+        let power; // instantiate variable
+        if (size == CASTLE_SIZE_SMALL) { // if small castle
+            power = INITIAL_ECONOMIC_POWER_SMALL_CASTLE; // set power to initial constant value
+        } else if (size == CASTLE_SIZE_MIDDLE) { // if middle castle
+            power = INITIAL_ECONOMIC_POWER_MIDDLE_CASTLE; // set power to initial constant value
+        } else if (size == CASTLE_SIZE_BIG) { // if big castle
+            power = INITIAL_ECONOMIC_POWER_BIG_CASTLE; // set power to initial constant value
         } else {
-            abort 0
+            abort 0 // abort the program
         };
-        power
+        power // return the power
     }
 
-    /// Calculate economic benefits based on power and time period (1 minute).
-    fun calculate_economic_benefits(start: u64, end: u64, power: u64): u64 { // gets a start time + end time + base castle econ power 
+    fun calculate_economic_benefits(start: u64, end: u64, power: u64): u64 { // calcualtes the base econ benefit per time period
         math::divide_and_round_up((end - start) * power, 60u64 * 1000u64)
+
+        /*
+            how this works: 
+
+            1. last time the econ benefits were settled - the time now
+            2. times the econ power
+            3. divide the result by 60u64 * 1000u64 which represents the number of miliseconds in a minute
+            4. the result gives us the total econ benefit in minutes
+            
+            example:
+            start = 0 seconds
+            end = 172800 seconds or two days
+            power 150 
+
+            172800 - 0 = 172800 seconds
+            172800 seconds * 150 power = 25920000 
+            60 * 1000 = 60000
+
+            25920000 / 60000 = 432 econ
+
+        */
     }
 
-    public fun get_castle_battle_cooldown(castle_data: &CastleData): u64 {
-        castle_data.millitary.battle_cooldown
-    }
-
-    public fun fetch_castle_data(id1: ID, id2: ID, game_store: &mut GameStore): (CastleData, CastleData) { // get the data of two castles by their ids
-        let castle_data1 = dynamic_field::remove<ID, CastleData>(&mut game_store.id, id1);
-        let castle_data2 = dynamic_field::remove<ID, CastleData>(&mut game_store.id, id2);
-        (castle_data1, castle_data2)
+    public fun get_castle_battle_cooldown(castle_data: &CastleData): u64 { // gets the batle cooldown for a castle
+        castle_data.millitary.battle_cooldown // returns the battle cooldown
     }
 
     /// Get castle soldier limit by castle size
